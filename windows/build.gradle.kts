@@ -34,6 +34,7 @@ compose.desktop {
             packageVersion = "0.1.0"
             description = "YTDLnis Windows desktop downloader"
             vendor = "YTDLnis"
+            modules("java.net.http")
             windows {
                 menu = true
                 perUserInstall = true
