@@ -22,6 +22,9 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Validate Windows module
+        run: .\\gradlew.bat :windows:compileKotlin
+
       - name: Build Windows MSI
         run: .\\gradlew.bat :windows:packageMsi
 
