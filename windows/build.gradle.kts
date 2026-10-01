@@ -34,6 +34,14 @@ compose.desktop {
             packageVersion = "0.1.0"
             description = "YTDLnis Windows desktop downloader"
             vendor = "YTDLnis"
+            shortcut = true
+            menuGroup = "YTDLnis"
+            windows {
+                menu = true
+                perUserInstall = true
+                dirChooser = true
+                upgradeUuid = "9c6f4f6b-8d9a-4f35-9b62-7f8e0a1c4d25"
+            }
         }
     }
 }
