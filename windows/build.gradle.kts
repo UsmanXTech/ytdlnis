@@ -29,6 +29,8 @@ compose.desktop {
             )
             packageName = "YTDLnis"
             packageVersion = "0.1.0"
+            description = "YTDLnis Windows desktop downloader"
+            vendor = "YTDLnis"
         }
     }
 }
