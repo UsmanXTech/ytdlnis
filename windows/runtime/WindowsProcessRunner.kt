@@ -2,8 +2,7 @@ package com.deniscerri.ytdl.windows.runtime
 
 import com.deniscerri.ytdl.windows.engine.ProgressParser
 import com.deniscerri.ytdl.windows.engine.ProgressUpdate
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.File
 import java.nio.charset.StandardCharsets
 
 data class ProcessResult(
@@ -16,20 +15,22 @@ data class ProcessResult(
 class WindowsProcessRunner {
     fun run(
         command: List<String>,
-        workingDirectory: java.io.File? = null,
+        workingDirectory: File? = null,
+        environment: Map<String, String> = emptyMap(),
         onOutput: ((ProgressUpdate) -> Unit)? = null
     ): ProcessResult {
         require(command.isNotEmpty()) { "Command cannot be empty" }
 
-        val process = ProcessBuilder(command)
+        val builder = ProcessBuilder(command)
             .redirectErrorStream(true)
-            .apply { workingDirectory?.let(::directory) }
-            .start()
+        workingDirectory?.let(builder::directory)
+        builder.environment().putAll(environment)
 
+        val process = builder.start()
         val parser = ProgressParser()
         val output = StringBuilder()
 
-        BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
+        process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
             while (true) {
                 val line = reader.readLine() ?: break
                 output.appendLine(line)
