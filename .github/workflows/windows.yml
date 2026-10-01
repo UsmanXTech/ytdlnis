@@ -6,7 +6,7 @@ on:
       - windows-port
   pull_request:
     branches:
-      - windows-port
+      - main
 
 jobs:
   build-windows:
@@ -16,17 +16,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
 
       - name: Validate Windows module
-        run: .\\gradlew.bat :windows:compileKotlin
+        run: .\\gradlew.bat -p windows compileKotlin
 
       - name: Build Windows MSI
-        run: .\\gradlew.bat :windows:packageMsi
+        run: .\\gradlew.bat -p windows packageMsi
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
