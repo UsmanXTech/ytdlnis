@@ -1,110 +1,180 @@
 package com.deniscerri.ytdl.windows
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.deniscerri.ytdl.windows.engine.ProgressUpdate
-import com.deniscerri.ytdl.windows.engine.YtdlRequest
+import com.deniscerri.ytdl.windows.data.DownloadStore
+import com.deniscerri.ytdl.windows.model.DownloadEntry
+import com.deniscerri.ytdl.windows.model.DownloadRequest
+import com.deniscerri.ytdl.windows.model.DownloadStatus
+import com.deniscerri.ytdl.windows.runtime.DownloadCommandBuilder
 import com.deniscerri.ytdl.windows.runtime.WindowsYtdlEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(engine: WindowsYtdlEngine) {
-    MaterialTheme {
-        val scope = rememberCoroutineScope()
-        var url by remember { mutableStateOf("") }
-        var output by remember { mutableStateOf("") }
-        var progress by remember { mutableStateOf(-1f) }
-        var status by remember { mutableStateOf("Ready") }
+    val store = remember { DownloadStore() }
+    val scope = rememberCoroutineScope()
 
+    var url by remember { mutableStateOf("") }
+    var outputDir by remember { mutableStateOf("") }
+    var audioOnly by remember { mutableStateOf(false) }
+    var format by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var downloads by remember { mutableStateOf(store.all()) }
+
+    fun refresh() {
+        downloads = store.all()
+    }
+
+    MaterialTheme {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("YTDLnis") }) }
+            topBar = {
+                TopAppBar(title = { Text("YTDLnis") })
+            }
         ) { padding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.fillMaxSize().padding(padding)
             ) {
-                Text("Download", style = MaterialTheme.typography.headlineSmall)
+                TabRow(selectedTabIndex = selectedTab) {
+                    listOf("Download", "Queue / History").forEachIndexed { index, label ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(label) }
+                        )
+                    }
+                }
 
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("URL") },
-                    singleLine = true
-                )
-
-                Button(
-                    onClick = {
-                        if (url.isBlank()) {
-                            status = "Enter a URL"
-                            return@Button
+                when (selectedTab) {
+                    0 -> Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = url,
+                            onValueChange = { url = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("URL") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = outputDir,
+                            onValueChange = { outputDir = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Output directory (optional)") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = format,
+                            onValueChange = { format = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Format selector (optional)") },
+                            singleLine = true,
+                            placeholder = { Text("bestvideo+bestaudio/best") }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Checkbox(checked = audioOnly, onCheckedChange = { audioOnly = it })
+                            Text("Audio only", modifier = Modifier.padding(top = 12.dp))
                         }
-                        scope.launch {
-                            status = "Downloading…"
-                            progress = -1f
-                            val lines = mutableListOf<String>()
-                            try {
-                                val result = engine.execute(
-                                    YtdlRequest(url),
-                                    processId = "desktop-download",
-                                    onOutput = { update: ProgressUpdate ->
-                                        if (update.progress >= 0f) progress = update.progress / 100f
-                                        lines.add(update.line)
-                                    }
+                        Button(
+                            onClick = {
+                                val cleanUrl = url.trim()
+                                if (cleanUrl.isBlank()) return@Button
+
+                                val id = UUID.randomUUID().toString()
+                                val request = DownloadRequest(
+                                    url = cleanUrl,
+                                    outputDirectory = outputDir.trim(),
+                                    audioOnly = audioOnly,
+                                    format = format.trim().takeIf(String::isNotBlank)
                                 )
-                                output = lines.takeLast(80).joinToString("\n")
-                                status = if (result.exitCode == 0) "Completed" else "Failed"
-                                if (result.exitCode == 0) progress = 1f
-                            } catch (e: Exception) {
-                                output = e.message.orEmpty()
-                                status = "Failed"
+                                val initial = DownloadEntry(
+                                    id = id,
+                                    url = cleanUrl,
+                                    outputDir = request.outputDirectory,
+                                    status = DownloadStatus.QUEUED
+                                )
+                                store.upsert(initial)
+                                refresh()
+                                selectedTab = 1
+
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        store.upsert(initial.copy(status = DownloadStatus.ACTIVE))
+                                        val result = engine.execute(
+                                            DownloadCommandBuilder.build(request),
+                                            processId = id,
+                                            onOutput = { update ->
+                                                val current = store.all().firstOrNull { it.id == id } ?: initial
+                                                store.upsert(
+                                                    current.copy(
+                                                        progress = update.progress,
+                                                        etaSeconds = update.etaSeconds,
+                                                        message = update.line.takeLast(500)
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        val final = store.all().firstOrNull { it.id == id } ?: initial
+                                        store.upsert(
+                                            final.copy(
+                                                status = if (result.exitCode == 0) DownloadStatus.COMPLETED else DownloadStatus.FAILED,
+                                                progress = if (result.exitCode == 0) 100f else final.progress,
+                                                message = result.stdout.takeLast(500)
+                                            )
+                                        )
+                                    } catch (t: Throwable) {
+                                        val current = store.all().firstOrNull { it.id == id } ?: initial
+                                        store.upsert(current.copy(status = DownloadStatus.FAILED, message = t.message.orEmpty()))
+                                    }
+                                    withContext(Dispatchers.Main) { refresh() }
+                                }
+                            }
+                        ) {
+                            Text("Download")
+                        }
+                    }
+
+                    1 -> LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(onClick = ::refresh) { Text("Refresh") }
+                                Button(onClick = {
+                                    downloads.filter { it.status == DownloadStatus.ACTIVE }
+                                        .forEach { engine.cancel(it.id) }
+                                    refresh()
+                                }) { Text("Cancel active") }
                             }
                         }
-                    }
-                ) {
-                    Text("Download")
-                }
-
-                if (progress >= 0f) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(status, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(output.ifBlank { "Download output will appear here." })
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { engine.cancel("desktop-download") }) {
-                        Text("Cancel")
+                        items(downloads, key = { it.id }) { item ->
+                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(item.url, style = MaterialTheme.typography.titleMedium)
+                                    Text(item.status.name)
+                                    if (item.progress >= 0f) {
+                                        LinearProgressIndicator(
+                                            progress = { item.progress / 100f },
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                        )
+                                    }
+                                    if (item.message.isNotBlank()) {
+                                        Text(item.message)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
