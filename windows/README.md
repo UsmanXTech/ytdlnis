@@ -1,26 +1,30 @@
 # YTDLnis Windows Port
 
-This directory contains the Windows desktop implementation being developed alongside the existing Android application.
+This branch contains the Windows desktop implementation developed alongside the Android application.
 
-## Milestone 1 — Engine foundation
+## Implemented
 
-Implemented:
-- Windows application-data paths
+- Windows runtime directory management
 - yt-dlp executable discovery
-- Windows subprocess execution
+- FFmpeg/FFprobe/Aria2c tool discovery
+- process registry and cancellation
 - yt-dlp request construction
 - yt-dlp/aria2c progress parsing
+- Compose Desktop Windows application shell
+- EXE/MSI packaging configuration
+- GitHub Actions Windows build workflow
 
-Current executable lookup order:
-1. YTDLNIS_YTDLP environment variable
-2. %LOCALAPPDATA%\\YTDLnis\\yt-dlp\\yt-dlp.exe
-3. yt-dlp.exe on PATH
+## Runtime
 
-The Android application remains unchanged.
+Default location:
 
-Next:
-- FFmpeg discovery and injection
-- cancellation/process registry
-- runtime bootstrap/downloads
-- shared data models
-- Windows desktop UI
+%LOCALAPPDATA%\\YTDLnis\\
+
+The runtime can also use tools supplied through environment variables, including YTDLNIS_YTDLP and YTDLNIS_FFMPEG.
+
+## Build locally
+
+gradlew.bat :windows:packageExe
+gradlew.bat :windows:packageMsi
+
+Android modules remain isolated from this Windows port.
