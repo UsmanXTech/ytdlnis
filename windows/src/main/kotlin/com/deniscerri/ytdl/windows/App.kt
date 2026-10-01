@@ -12,6 +12,7 @@ import com.deniscerri.ytdl.windows.model.DownloadEntry
 import com.deniscerri.ytdl.windows.model.DownloadRequest
 import com.deniscerri.ytdl.windows.model.DownloadStatus
 import com.deniscerri.ytdl.windows.runtime.DownloadCommandBuilder
+import com.deniscerri.ytdl.windows.runtime.WindowsRuntimeBootstrap
 import com.deniscerri.ytdl.windows.runtime.WindowsYtdlEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,6 +23,7 @@ import java.util.UUID
 @Composable
 fun App(engine: WindowsYtdlEngine) {
     val store = remember { DownloadStore() }
+    val bootstrap = remember { WindowsRuntimeBootstrap() }
     val scope = rememberCoroutineScope()
 
     var url by remember { mutableStateOf("") }
@@ -29,6 +31,7 @@ fun App(engine: WindowsYtdlEngine) {
     var audioOnly by remember { mutableStateOf(false) }
     var format by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var statusMessage by remember { mutableStateOf("Ready") }
     var downloads by remember { mutableStateOf(store.all()) }
 
     fun refresh() {
@@ -37,26 +40,21 @@ fun App(engine: WindowsYtdlEngine) {
 
     MaterialTheme {
         Scaffold(
-            topBar = {
-                TopAppBar(title = { Text("YTDLnis") })
-            }
+            topBar = { TopAppBar(title = { Text("YTDLnis") }) }
         ) { padding ->
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding)
-            ) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
                 TabRow(selectedTabIndex = selectedTab) {
-                    listOf("Download", "Queue / History").forEachIndexed { index, label ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(label) }
-                        )
-                    }
+                    Tab(selectedTab == 0, { selectedTab = 0 }, text = { Text("Download") })
+                    Tab(selectedTab == 1, { selectedTab = 1 }, text = { Text("Queue / History") })
+                }
+
+                if (statusMessage != "Ready") {
+                    Text(statusMessage, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
                 }
 
                 when (selectedTab) {
                     0 -> Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        Modifier.fillMaxSize().padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedTextField(
@@ -70,45 +68,48 @@ fun App(engine: WindowsYtdlEngine) {
                             value = outputDir,
                             onValueChange = { outputDir = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Output directory (optional)") },
+                            label = { Text("Output directory") },
                             singleLine = true
                         )
                         OutlinedTextField(
                             value = format,
                             onValueChange = { format = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Format selector (optional)") },
+                            label = { Text("Format selector") },
                             singleLine = true,
                             placeholder = { Text("bestvideo+bestaudio/best") }
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Checkbox(checked = audioOnly, onCheckedChange = { audioOnly = it })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(audioOnly, { audioOnly = it })
                             Text("Audio only", modifier = Modifier.padding(top = 12.dp))
                         }
+
                         Button(
                             onClick = {
                                 val cleanUrl = url.trim()
-                                if (cleanUrl.isBlank()) return@Button
-
-                                val id = UUID.randomUUID().toString()
-                                val request = DownloadRequest(
-                                    url = cleanUrl,
-                                    outputDirectory = outputDir.trim(),
-                                    audioOnly = audioOnly,
-                                    format = format.trim().takeIf(String::isNotBlank)
-                                )
-                                val initial = DownloadEntry(
-                                    id = id,
-                                    url = cleanUrl,
-                                    outputDir = request.outputDirectory,
-                                    status = DownloadStatus.QUEUED
-                                )
-                                store.upsert(initial)
-                                refresh()
-                                selectedTab = 1
+                                if (cleanUrl.isBlank()) {
+                                    statusMessage = "Enter a URL."
+                                    return@Button
+                                }
 
                                 scope.launch(Dispatchers.IO) {
                                     try {
+                                        bootstrap.initializeDirectories()
+                                        val id = UUID.randomUUID().toString()
+                                        val request = DownloadRequest(
+                                            url = cleanUrl,
+                                            outputDirectory = outputDir.trim(),
+                                            audioOnly = audioOnly,
+                                            format = format.trim().takeIf(String::isNotBlank)
+                                        )
+                                        val initial = DownloadEntry(
+                                            id = id,
+                                            url = cleanUrl,
+                                            outputDir = request.outputDirectory,
+                                            status = DownloadStatus.QUEUED
+                                        )
+                                        store.upsert(initial)
+
                                         store.upsert(initial.copy(status = DownloadStatus.ACTIVE))
                                         val result = engine.execute(
                                             DownloadCommandBuilder.build(request),
@@ -124,19 +125,24 @@ fun App(engine: WindowsYtdlEngine) {
                                                 )
                                             }
                                         )
-                                        val final = store.all().firstOrNull { it.id == id } ?: initial
+                                        val current = store.all().firstOrNull { it.id == id } ?: initial
                                         store.upsert(
-                                            final.copy(
+                                            current.copy(
                                                 status = if (result.exitCode == 0) DownloadStatus.COMPLETED else DownloadStatus.FAILED,
-                                                progress = if (result.exitCode == 0) 100f else final.progress,
+                                                progress = if (result.exitCode == 0) 100f else current.progress,
                                                 message = result.stdout.takeLast(500)
                                             )
                                         )
                                     } catch (t: Throwable) {
-                                        val current = store.all().firstOrNull { it.id == id } ?: initial
-                                        store.upsert(current.copy(status = DownloadStatus.FAILED, message = t.message.orEmpty()))
+                                        val failed = store.all().firstOrNull { it.url == cleanUrl }
+                                        if (failed != null) store.upsert(failed.copy(status = DownloadStatus.FAILED, message = t.message.orEmpty()))
                                     }
-                                    withContext(Dispatchers.Main) { refresh() }
+
+                                    withContext(Dispatchers.Main) {
+                                        statusMessage = "Download finished."
+                                        refresh()
+                                        selectedTab = 1
+                                    }
                                 }
                             }
                         ) {
@@ -145,7 +151,7 @@ fun App(engine: WindowsYtdlEngine) {
                     }
 
                     1 -> LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        Modifier.fillMaxSize().padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         item {
@@ -158,20 +164,20 @@ fun App(engine: WindowsYtdlEngine) {
                                 }) { Text("Cancel active") }
                             }
                         }
+
                         items(downloads, key = { it.id }) { item ->
-                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(16.dp)) {
+                            ElevatedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(item.url, style = MaterialTheme.typography.titleMedium)
                                     Text(item.status.name)
                                     if (item.progress >= 0f) {
                                         LinearProgressIndicator(
                                             progress = { item.progress / 100f },
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
-                                    if (item.message.isNotBlank()) {
-                                        Text(item.message)
-                                    }
+                                    if (item.etaSeconds >= 0) Text("ETA: " + item.etaSeconds + "s")
+                                    if (item.message.isNotBlank()) Text(item.message)
                                 }
                             }
                         }
