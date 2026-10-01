@@ -1,0 +1,32 @@
+name: Windows Desktop
+
+on:
+  push:
+    branches:
+      - windows-port
+  pull_request:
+    branches:
+      - windows-port
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Build Windows MSI
+        run: .\\gradlew.bat :windows:packageMsi
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: YTDLnis-Windows-MSI
+          path: windows/build/compose/binaries/main/msi/*.msi
