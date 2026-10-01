@@ -1,0 +1,51 @@
+name: Windows Desktop
+
+on:
+  push:
+    branches:
+      - windows-port
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'settings.gradle*'
+      - 'build.gradle*'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'settings.gradle*'
+      - 'build.gradle*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Validate Windows module
+        run: .\\gradlew.bat -p windows compileKotlin
+
+      - name: Build Windows MSI
+        run: .\\gradlew.bat -p windows packageMsi
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: YTDLnis-Windows-MSI
+          path: windows/build/compose/binaries/main/msi/*.msi
