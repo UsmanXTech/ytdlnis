@@ -2,17 +2,25 @@
 
 This directory contains the Windows desktop implementation being developed alongside the existing Android application.
 
-## Goals
+## Milestone 1 — Engine foundation
 
-- Reuse the existing yt-dlp request/options and process execution concepts.
-- Keep the Android application unchanged.
-- Provide Windows-specific runtime, filesystem, process, scheduling, and UI layers.
-- Preserve YTDLnis behavior and design as closely as practical.
+Implemented:
+- Windows application-data paths
+- yt-dlp executable discovery
+- Windows subprocess execution
+- yt-dlp request construction
+- yt-dlp/aria2c progress parsing
 
-## Initial architecture
+Current executable lookup order:
+1. YTDLNIS_YTDLP environment variable
+2. %LOCALAPPDATA%\\YTDLnis\\yt-dlp\\yt-dlp.exe
+3. yt-dlp.exe on PATH
 
-- `engine/`: platform-neutral command/request and process abstractions.
-- `runtime/`: Windows paths and bundled executable management.
-- `app/`: Windows desktop application entry point and UI.
+The Android application remains unchanged.
 
-The first milestone is a minimal Windows engine that can locate yt-dlp and execute a request while reporting progress.
+Next:
+- FFmpeg discovery and injection
+- cancellation/process registry
+- runtime bootstrap/downloads
+- shared data models
+- Windows desktop UI
