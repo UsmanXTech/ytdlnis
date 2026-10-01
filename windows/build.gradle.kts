@@ -34,8 +34,6 @@ compose.desktop {
             packageVersion = "0.1.0"
             description = "YTDLnis Windows desktop downloader"
             vendor = "YTDLnis"
-            shortcut = true
-            menuGroup = "YTDLnis"
             windows {
                 menu = true
                 perUserInstall = true
