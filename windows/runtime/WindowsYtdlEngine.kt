@@ -7,7 +7,7 @@ import java.nio.file.Path
 
 class WindowsYtdlEngine(
     private val runtime: WindowsRuntime = WindowsRuntime(),
-    private val locator: WindowsToolLocator = WindowsToolLocator(runtime.paths)
+    private val locator: WindowsToolLocator = WindowsToolLocator()
 ) {
     private val registry = WindowsProcessRegistry()
 
@@ -50,9 +50,7 @@ class WindowsYtdlEngine(
                     onOutput?.invoke(parser.parse(line))
                 }
             }
-
-            val exitCode = process.waitFor()
-            ProcessResult(command, exitCode, output.toString(), "")
+            ProcessResult(command, process.waitFor(), output.toString(), "")
         } finally {
             if (processId != null) registry.remove(processId)
         }
