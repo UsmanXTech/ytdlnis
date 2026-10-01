@@ -3,37 +3,46 @@ package com.deniscerri.ytdl.windows.runtime
 import com.deniscerri.ytdl.windows.engine.ProgressUpdate
 import com.deniscerri.ytdl.windows.engine.YtdlRequest
 import java.nio.file.Files
+import java.nio.file.Path
 
 class WindowsYtdlEngine(
-    private val runtime: WindowsRuntime = WindowsRuntime()
+    private val runtime: WindowsRuntime = WindowsRuntime(),
+    private val locator: WindowsToolLocator = WindowsToolLocator(runtime.paths)
 ) {
     private val registry = WindowsProcessRegistry()
 
     fun initialize() = runtime.initialize()
 
-    fun locateYtDlp(): java.nio.file.Path {
-        val configured = System.getenv("YTDLNIS_YTDLP")
-        if (!configured.isNullOrBlank()) return java.nio.file.Paths.get(configured)
-        val local = runtime.ytDlpExecutable()
-        if (Files.isRegularFile(local)) return local
-        val onPath = java.nio.file.Paths.get("yt-dlp.exe")
-        if (Files.isRegularFile(onPath)) return onPath
-        error("yt-dlp.exe was not found. Place it in %LOCALAPPDATA%\\YTDLnis\\yt-dlp\\yt-dlp.exe or set YTDLNIS_YTDLP.")
-    }
-
     fun execute(
         request: YtdlRequest,
         processId: String? = null,
+        useFfmpeg: Boolean = true,
         onOutput: ((ProgressUpdate) -> Unit)? = null
     ): ProcessResult {
         initialize()
-        val command = listOf(locateYtDlp().toString()) + request.buildCommand()
-        val process = ProcessBuilder(command).redirectErrorStream(true).apply {
-            environment().putAll(runtime.environment())
-        }.start()
+
+        val ytDlp = locator.require(WindowsTools.ytDlp, "YTDLNIS_YTDLP")
+        val ffmpeg = locator.find(WindowsTools.ffmpeg, "YTDLNIS_FFMPEG")
+
+        val command = buildList {
+            add(ytDlp.toString())
+            if (useFfmpeg && ffmpeg != null) {
+                add("--ffmpeg-location")
+                add(ffmpeg.parent.toString())
+            }
+            addAll(request.buildCommand())
+        }
+
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .apply { environment().putAll(runtime.environment()) }
+            .start()
+
         if (processId != null) registry.register(processId, process)
+
         val output = StringBuilder()
         val parser = com.deniscerri.ytdl.windows.engine.ProgressParser()
+
         return try {
             process.inputStream.bufferedReader().useLines { lines ->
                 lines.forEach { line ->
@@ -41,13 +50,16 @@ class WindowsYtdlEngine(
                     onOutput?.invoke(parser.parse(line))
                 }
             }
+
             val exitCode = process.waitFor()
-            if (exitCode != 0) throw RuntimeException("yt-dlp exited with code $exitCode\\n$output")
             ProcessResult(command, exitCode, output.toString(), "")
         } finally {
             if (processId != null) registry.remove(processId)
         }
     }
 
+    fun ffmpegPath(): Path? = locator.find(WindowsTools.ffmpeg, "YTDLNIS_FFMPEG")
+    fun ffprobePath(): Path? = locator.find(WindowsTools.ffprobe, "YTDLNIS_FFMPEG")
+    fun hasAria2c(): Boolean = locator.find(WindowsTools.aria2c, "YTDLNIS_ARIA2C") != null
     fun cancel(processId: String): Boolean = registry.cancel(processId)
 }
